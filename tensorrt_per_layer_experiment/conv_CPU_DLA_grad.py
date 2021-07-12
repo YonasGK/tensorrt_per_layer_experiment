@@ -74,7 +74,7 @@ class use_DLA():
         # build an with configuration engine for the forward pass
         with trt.Builder(TRT_LOGGER) as builder, builder.create_builder_config() as config, builder.create_network() as network:
 
-            builder.max_batch_size =64
+            builder.max_batch_size = 32
             builder.refittable= True
             config.default_device_type= trt.DeviceType.GPU
             config.set_flag(trt.BuilderFlag.REFIT)
@@ -91,7 +91,7 @@ class use_DLA():
             if self.grad_weight == True:
                 builder.max_batch_size = 1
             else:
-                builder.max_batch_size = 64
+                builder.max_batch_size = 32
             builder.refittable =True
             config.default_device_type= trt.DeviceType.GPU
             config.max_workspace_size= 1 << 30
