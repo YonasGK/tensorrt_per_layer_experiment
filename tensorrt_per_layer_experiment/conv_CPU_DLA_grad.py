@@ -106,9 +106,13 @@ class use_DLA():
             return builder.build_engine(network, config)
 
     # Loads input from cpu
-    def load_input(self, pagelocked_buffer, inputs_cpu):
+    def load_input_forward(self, pagelocked_buffer, inputs_cpu):
         img=inputs_cpu.flatten()
         np.copyto(pagelocked_buffer,img)
+    def load_input_back(self, pagelocked_buffer, inputs_cpu):
+        img=inputs_cpu.flatten()
+        np.copyto(pagelocked_buffer,img)
+
     # intialize engine: build engine, allocate buffers and  create execution context object for the forward pass engine.
     def initialize_engine(self):
         self.engine=self.build_engine(self.weights, self.bias)
@@ -132,9 +136,9 @@ class use_DLA():
                 refitter.set_weights("conv_1", trt.WeightsRole.BIAS, bias.detach().numpy())
             assert refitter.refit_cuda_engine()
             #end=time.time()
-            self.load_input(self.inputs[0].host, inputs_cpu)
+            self.load_input_forward(self.inputs[0].host, inputs_cpu)
             [output] = common.do_inference(self.context, bindings=self.bindings, inputs=self.inputs, outputs=self.outputs, stream=self.stream, batch_size=inputs_cpu.shape[0])
-            self.stream.synchronize()
+            #self.stream.synchronize()
             #if self.runs>5:
             #    self.sum+=end-start
             #self.runs+=1
@@ -150,9 +154,9 @@ class use_DLA():
             assert refitter.refit_cuda_engine()
             #end=time.time()
 
-            self.load_input(self.inputs[0].host, inputs_cpu)
+            self.load_input_back(self.inputs[0].host, inputs_cpu)
             [output] = common.do_inference(self.context, bindings=self.bindings, inputs=self.inputs, outputs=self.outputs, stream=self.stream, batch_size=inputs_cpu.shape[0])
-            self.stream.synchronize()
+            #self.stream.synchronize()
             #if self.runs>5:
             #    self.sum+=end-start
             #self.runs+=1
