@@ -14,7 +14,54 @@ import warnings
 
 # You can set the logger severity higher to suppress messages (or lower to display more messages).
 TRT_LOGGER = trt.Logger(trt.Logger.WARNING)
+def check_torch_dtype(*tensors):
+    dtype = None
+    for t in tensors:
+        if isinstance(t, torch.Tensor):
+            if dtype is None:
+                dtype = t.dtype
+            else:
+                assert dtype == t.dtype  # , 'Tensor data types must match')
+    assert (
+        dtype is not None
+    )  # , 'Data type could not be inferred from any item in list')
+    return dtype
+def trt_(network, *tensors):
+    """Creates missing TensorRT tensors and adds shuffle layers to make tensors broadcastable"""
+    trt_tensors = [None] * len(tensors)
 
+    dtype = check_torch_dtype(*tensors)
+
+    # get broadcast dimension
+    broadcast_num_dim = 0
+    for t in tensors:
+        if isinstance(t, torch.Tensor):
+            if not hasattr(t, "_trt"):
+                num_dim = len(t.shape)  # don't exclude batch for constants
+            else:
+                num_dim = len(
+                    t._trt.shape
+                )  # non-leaf tensors must already have _trt, get shape from that
+            if num_dim > broadcast_num_dim:
+                broadcast_num_dim = num_dim
+
+    for i, t in enumerate(tensors):
+        trt_tensor = None
+
+        # GET TRT TENSOR (OR CREATE TRT CONSTANT)
+
+        # get tensor w/ _trt
+        if isinstance(t, torch.Tensor) and hasattr(t, "_trt"):
+            trt_tensor = t._trt
+
+
+
+
+
+    if len(trt_tensors) == 1:
+        return trt_tensors[0]
+    else:
+        return tuple(trt_tensors)
 """
 A class to create a newtork, populate the network, create an engine, initilize the engine, create a context and do inference on the accelerator 
 """
@@ -136,8 +183,9 @@ class use_DLA():
                 refitter.set_weights("conv_1", trt.WeightsRole.BIAS, bias.detach().numpy())
             assert refitter.refit_cuda_engine()
             #end=time.time()
-            self.load_input_forward(self.inputs[0].host, inputs_cpu)
-            [output] = common.do_inference(self.context, bindings=self.bindings, inputs=self.inputs, outputs=self.outputs, stream=self.stream, batch_size=inputs_cpu.shape[0])
+            #self.load_input_forward(self.inputs[0].host, inputs_cpu)
+            inputs= trt_(self.network, inputs_cpu)
+            [output] = common.do_inference(self.context, bindings=self.bindings, inputs=inputs, outputs=self.outputs, stream=self.stream, batch_size=inputs_cpu.shape[0])
             #self.stream.synchronize()
             #if self.runs>5:
             #    self.sum+=end-start
