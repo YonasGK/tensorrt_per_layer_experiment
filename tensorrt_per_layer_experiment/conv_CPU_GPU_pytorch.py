@@ -82,7 +82,8 @@ def return_result_to_cpu_input_grad(x_grad):
     return x_grad.cpu()
 def return_result_to_cpu_weight_grad(w_grad):
     return w_grad.cpu()
-
+def compute_forward(inputs_cuda, weights_cuda, stride, padding, dilation, groups):
+    return torch.conv2d(inputs_cuda, weights_cuda, None, stride, padding, dilation, groups)
 class custom_conv2d_grad(torch.autograd.Function):
     @staticmethod
     #save input, weight tensors and parameters for back prop, do conv operation, reshape the 2d output to 4d and return
@@ -100,7 +101,7 @@ class custom_conv2d_grad(torch.autograd.Function):
 
         #model=model.cpu()
         #print(inputs_cpu.device)
-        out=torch.conv2d(inputs_cuda, weights_cuda, None, stride, padding, dilation, groups)
+        out=compute_forward(inputs_cuda, weights_cuda, stride, padding, dilation, groups)
         return return_result_to_cpu_forward(out)
     @staticmethod
     # obtain saved tensors and parameters from the forward pass and compute input and weight gradients
@@ -124,7 +125,7 @@ class custom_conv2d_grad(torch.autograd.Function):
                 
         return x_grad_cpu, w_grad_cpu, None, None, None, None, None
 class custom_conv2d(nn.Module):
-    def __init__(self, module, in_channel=1, out_channel=0, kernel_shape=(3,3), stride=(1,1), padding=(0,0), dilation=(1,1), groups=1, bias=False):
+    def __init__(self, in_channel=1, out_channel=0, kernel_shape=(3,3), stride=(1,1), padding=(0,0), dilation=(1,1), groups=1, bias=False):
         super(custom_conv2d,self).__init__()
         self.in_channel=in_channel
         self.out_channel=out_channel
@@ -132,7 +133,7 @@ class custom_conv2d(nn.Module):
         self.stride=stride
         self.groups=groups
         self.dilation=dilation
-        self.conv1=module
+        self.conv1=nn.Conv2d(in_channel, out_channel, kernel_size = kernel_shape[0], stride=stride[0], padding=padding[0], dilation=dilation[0], groups=groups, bias =False)
         self.prev_weight=None
         self.run=0
     def forward(self, inputs):

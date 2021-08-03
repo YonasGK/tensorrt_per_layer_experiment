@@ -14,54 +14,7 @@ import warnings
 
 # You can set the logger severity higher to suppress messages (or lower to display more messages).
 TRT_LOGGER = trt.Logger(trt.Logger.WARNING)
-def check_torch_dtype(*tensors):
-    dtype = None
-    for t in tensors:
-        if isinstance(t, torch.Tensor):
-            if dtype is None:
-                dtype = t.dtype
-            else:
-                assert dtype == t.dtype  # , 'Tensor data types must match')
-    assert (
-        dtype is not None
-    )  # , 'Data type could not be inferred from any item in list')
-    return dtype
-def trt_(network, *tensors):
-    """Creates missing TensorRT tensors and adds shuffle layers to make tensors broadcastable"""
-    trt_tensors = [None] * len(tensors)
 
-    dtype = check_torch_dtype(*tensors)
-
-    # get broadcast dimension
-    broadcast_num_dim = 0
-    for t in tensors:
-        if isinstance(t, torch.Tensor):
-            if not hasattr(t, "_trt"):
-                num_dim = len(t.shape)  # don't exclude batch for constants
-            else:
-                num_dim = len(
-                    t._trt.shape
-                )  # non-leaf tensors must already have _trt, get shape from that
-            if num_dim > broadcast_num_dim:
-                broadcast_num_dim = num_dim
-
-    for i, t in enumerate(tensors):
-        trt_tensor = None
-
-        # GET TRT TENSOR (OR CREATE TRT CONSTANT)
-
-        # get tensor w/ _trt
-        if isinstance(t, torch.Tensor) and hasattr(t, "_trt"):
-            trt_tensor = t._trt
-
-
-
-
-
-    if len(trt_tensors) == 1:
-        return trt_tensors[0]
-    else:
-        return tuple(trt_tensors)
 """
 A class to create a newtork, populate the network, create an engine, initilize the engine, create a context and do inference on the accelerator 
 """
@@ -182,34 +135,24 @@ class use_DLA():
             if bias is not None:
                 refitter.set_weights("conv_1", trt.WeightsRole.BIAS, bias.detach().numpy())
             assert refitter.refit_cuda_engine()
-            #end=time.time()
-            #self.load_input_forward(self.inputs[0].host, inputs_cpu)
-            inputs= trt_(self.network, inputs_cpu)
-            [output] = common.do_inference(self.context, bindings=self.bindings, inputs=inputs, outputs=self.outputs, stream=self.stream, batch_size=inputs_cpu.shape[0])
-            #self.stream.synchronize()
-            #if self.runs>5:
-            #    self.sum+=end-start
-            #self.runs+=1
-            #if self.runs==25:
-               # print(self.sum)
+
+            self.load_input_forward(self.inputs[0].host, inputs_cpu)
+
+            [output] = common.do_inference(self.context, bindings=self.bindings, inputs=self.inputs, outputs=self.outputs, stream=self.stream, batch_size=inputs_cpu.shape[0])
+            
         return output
     #refit the new update weight onto the engine and do conv operation in the backward pass
     def back(self, weights, bias, inputs_cpu):
         output=None
-        #start=time.time()
+        
         with trt.Refitter(self.engine, TRT_LOGGER) as refitter:
             refitter.set_weights("conv_1", trt.WeightsRole.KERNEL, weights.detach().numpy())
             assert refitter.refit_cuda_engine()
-            #end=time.time()
-
+            
             self.load_input_back(self.inputs[0].host, inputs_cpu)
+            
             [output] = common.do_inference(self.context, bindings=self.bindings, inputs=self.inputs, outputs=self.outputs, stream=self.stream, batch_size=inputs_cpu.shape[0])
-            #self.stream.synchronize()
-            #if self.runs>5:
-            #    self.sum+=end-start
-            #self.runs+=1
-            #if self.runs==25:
-                #print(self.sum)
+             
         return output
 
 
@@ -347,14 +290,14 @@ class Conv2d_DLA_grad(nn.Module):
                     1, grad_out1.shape[2], grad_out1.shape[3])
             inputs = inputs.contiguous().view(1, inputs.shape[0] * inputs.shape[1],
                                     inputs.shape[2],  inputs.shape[3])
-
+            
             grad_weight=torch.tensor(self.grad_w.back(grad_out2, self.bias, inputs))
             h=int(torch.sqrt(torch.tensor(grad_weight.shape[0]/(inputs.shape[0] * grad_out2.shape[0] ))))
 
             grad_weight = grad_weight.contiguous().view(
                         self.inputs.shape[0], grad_weight.shape[0] // (self.inputs.shape[0]*h*h),
                         h,  h)
-
+            
             return  grad_weight.sum(dim=0).view(
                     self.inputs.shape[1]// self.groups, self.grad_out.shape[1],  grad_weight.shape[2], grad_weight.shape[3]).transpose(0, 1).narrow(
                             2, 0, self.weight.shape[2]).narrow(3, 0, self.weight.shape[3])
